@@ -439,7 +439,9 @@ class DiscoverChatTests(TestCase):
             self.assertEqual({item["restaurant_name"] for item in data["results"]}, {"Seoul Kitchen", "Ktown Pocha"})
             for item in data["results"]:
                 self.assertEqual((item["neighborhood"], item["location"]), ("Koreatown", "Koreatown, Los Angeles"))
-            self.assertTrue(all(query.startswith("Koreatown Los Angeles") for query in queries))
+            # The first two searches name the area; extra rounds use Koreatown's nickname and main streets.
+            self.assertTrue(all(query.startswith("Koreatown Los Angeles") for query in queries[:2]))
+            self.assertTrue(all(query.startswith(("K-Town", "Western Ave")) for query in queries[2:]))
             self.assertTrue(all(city == "Koreatown, Los Angeles" for city in gemini_cities))
 
             # The San Gabriel Valley is outside the city of Los Angeles; its own towns count as the area.
@@ -610,8 +612,8 @@ class DiscoverChatTests(TestCase):
         self.assertEqual([card["restaurant_name"] for card in more], ["Arcadia Sichuan"])
         self.assertTrue(queries[2].startswith("Monterey Park Rosemead"))
 
-        # Whole-city searches and areas without listed towns make no extra searches.
-        for neighborhood in ("", "Koreatown"):
+        # Whole-city searches make no extra searches.
+        for neighborhood in ("",):
             with self.subTest(neighborhood=neighborhood):
                 queries.clear()
                 with patch("discover_tavily._fetch_results", side_effect=fetch):
@@ -721,3 +723,23 @@ class DiscoverChatTests(TestCase):
             more = search_tavily({"cuisine": "Korean", "taste": "Any flavor", "dish": ""}, "Los Angeles",
                                  select_picks=select, neighborhood="Koreatown", exclude_restaurants=["Danbi"])
         self.assertEqual(more, [])
+
+    def test_any_flavor_searches_look_for_well_known_dishes_and_koreatown_searches_its_main_streets(self):
+        from discover_tavily import search_tavily
+
+        queries = []
+
+        def fetch(query, **_options):
+            queries.append(query)
+            return []
+
+        with patch("discover_tavily._fetch_results", side_effect=fetch):
+            cards = search_tavily({"cuisine": "Korean", "taste": "Any flavor", "dish": ""}, "Los Angeles",
+                                  select_picks=lambda *_args: [], neighborhood="Koreatown")
+        self.assertEqual(cards, [])
+        self.assertEqual(queries, [
+            "Koreatown Los Angeles restaurant menus Korean",
+            "Koreatown Los Angeles Korean restaurant dinner menus with galbi or bibimbap",
+            "K-Town Wilshire Blvd CA restaurant menus Korean",
+            "Western Ave 6th St CA restaurant menus Korean",
+        ])

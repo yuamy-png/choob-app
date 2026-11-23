@@ -2,8 +2,8 @@
 
 A menu page counts as being in a neighborhood only when its title or the excerpt shown to Gemini
 names one of the neighborhood's places or carries one of its ZIP codes. Some neighborhoods also list
-towns to search by name when the area-wide search finds too few menus; every town is also one of
-the area's places, so its menus still pass the same check. Area names alone are not
+towns (or, for Koreatown, a nickname and main streets) to search by name when the area-wide search
+finds too few menus; whatever those searches find must still pass the same place-or-ZIP check. Area names alone are not
 enough for broad labels such as "Chinatown", so each entry is scoped to its city.
 """
 
@@ -22,6 +22,9 @@ NEIGHBORHOODS = {
         "Koreatown": {
             "places": ("Koreatown", "Korea Town", "K-Town", "Ktown"),
             "zip": r"900(?:05|06|10|20)",
+            # Koreatown has no separate towns; its nickname and main streets find more restaurant pages.
+            # Their menus still need a Koreatown name or ZIP code to count.
+            "towns": ("K-Town", "Wilshire Blvd", "Western Ave", "6th St"),
         },
         "San Gabriel Valley": {
             "places": ("San Gabriel Valley", "San Gabriel", "Alhambra", "Monterey Park", "Rosemead", "Arcadia",

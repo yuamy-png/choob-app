@@ -43,6 +43,13 @@ _FOLLOWUP_DISH_TERMS = {
     ("Sichuan", "Spicy"): ("Sichuan spicy eggplant", "Szechuan peppercorn"),
     ("Hunan", "Spicy"): ("Hunan spicy beef", "Hunan spicy fish"),
     ("Mexican", "Fresh & light"): ("ceviche", "citrus salsa", "grilled fish tacos"),
+    # With no flavor to search for, well-known dishes find pages that actually list menu items.
+    ("Korean", "Any flavor"): ("galbi", "bibimbap", "soondubu", "kimchi jjigae"),
+    ("Japanese", "Any flavor"): ("sushi", "ramen", "udon"),
+    ("Chinese", "Any flavor"): ("dumplings", "hand-pulled noodles", "fried rice"),
+    ("Thai", "Any flavor"): ("pad thai", "green curry", "tom yum"),
+    ("Mexican", "Any flavor"): ("tacos", "enchiladas", "mole"),
+    ("Italian", "Any flavor"): ("fresh pasta", "pizza", "risotto"),
 }
 _FOLLOWUP_TASTE_TERMS = {
     "Crispy": ("breaded", "crunchy", "deep fried"),
