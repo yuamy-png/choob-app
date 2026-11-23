@@ -51,6 +51,17 @@ _FOLLOWUP_DISH_TERMS = {
     ("Mexican", "Any flavor"): ("tacos", "enchiladas", "mole"),
     ("Italian", "Any flavor"): ("fresh pasta", "pizza", "risotto"),
 }
+# How menus usually name dishes diners describe in English; used to search for and focus on them.
+_DISH_ALIASES = {
+    "tofu soup": ("soondubu", "sundubu jjigae", "soft tofu stew"),
+    "tofu stew": ("soondubu", "sundubu jjigae", "soft tofu stew"),
+    "soft tofu": ("soondubu", "sundubu jjigae", "soft tofu stew"),
+    "rice cakes": ("tteokbokki", "rice cake"),
+    "cold noodles": ("naengmyeon", "cold noodle"),
+    "pork belly": ("samgyeopsal", "pork belly"),
+}
+# Flavors that help choose dishes but make poor search words ("mild tofu soup" finds blogs, not menus).
+_UNSEARCHED_TASTES = {"mild"}
 _FOLLOWUP_TASTE_TERMS = {
     "Crispy": ("breaded", "crunchy", "deep fried"),
     "Spicy": ("chili", "hot sauce", "peppery"),
@@ -162,6 +173,12 @@ def _normalized(value):
 def _contains(phrase, text):
     words = _normalized(phrase)
     return bool(words and f" {words} " in f" {_normalized(text)} ")
+
+
+def _dish_aliases(dish):
+    """Menu names for a requested dish, e.g. soondubu for "Korean tofu soup"."""
+    words = _normalized(dish)
+    return next((aliases for name, aliases in _DISH_ALIASES.items() if _contains(name, words)), ())
 
 
 def _cuisine_matches(chosen, label):
@@ -289,7 +306,7 @@ def _menu_sources(pages, city, preferences=None, *, limit=_MODEL_SOURCE_LIMIT, a
     dish = _text(preferences.get("dish"), 80)
     cuisine = preferences.get("cuisine")
     taste = preferences.get("taste")
-    terms = tuple(term for term in (dish, *_REGION_ALIASES.get(_chinese_region(preferences), ()),
+    terms = tuple(term for term in (dish, *_dish_aliases(dish), *_REGION_ALIASES.get(_chinese_region(preferences), ()),
                                     *TASTE_TERMS.get(taste, ()),
                                     *_FOLLOWUP_DISH_TERMS.get((cuisine, taste), ()),
                                     *_FOLLOWUP_TASTE_TERMS.get(taste, ())) if term)
@@ -556,6 +573,14 @@ def _pick_results(pages, preferences, city, select_picks, existing=(), *,
                 quote = detail
             if not _heat_cue(quote):
                 continue
+        if taste == "Mild" and not quote:
+            # Menus usually offer a spice level ("White, Mild, Medium, Hot") once for the whole page.
+            # A dish that is not itself marked spicy counts when its menu offers a mild level.
+            dish_words = _normalized(dish)
+            if not (_DIRECT_HEAT.search(dish_words) or _PREPARATION_HEAT.search(dish_words)):
+                quote = next((_focused_passage(line.strip(), 120, ("mild", "not spicy", "non spicy", "non-spicy"))
+                              for passage in passages for line in passage.splitlines()
+                              if _MILD_EVIDENCE.search(_normalized(line))), "")
         if has_taste and not quote:
             continue
         result = {
@@ -633,8 +658,11 @@ def search_tavily(preferences, city, *, select_picks, exclude_restaurants=(), ne
     region = _chinese_region(preferences)
     excluded = {_restaurant_key(_text(name, 120)) for name in exclude_restaurants}
     excluded.discard("")
-    choices = [value for value in (cuisine, region, taste, dish) if value and value.casefold() not in _FLEXIBLE]
-    query = " ".join([place, "restaurant menus", *choices])
+    searched_taste = "" if taste.casefold() in _UNSEARCHED_TASTES else taste
+    choices = [value for value in (cuisine, region, searched_taste, dish)
+               if value and value.casefold() not in _FLEXIBLE]
+    aliases = _dish_aliases(dish)
+    query = " ".join([place, "restaurant menus", *choices, *aliases[:1]])
     if region:
         regional_choices = [value for value in (taste, dish) if value and value.casefold() not in _FLEXIBLE]
         query = " ".join([place, region, "cuisine restaurant menus", *regional_choices])
@@ -645,7 +673,13 @@ def search_tavily(preferences, city, *, select_picks, exclude_restaurants=(), ne
 
     related = () if dish else _FOLLOWUP_DISH_TERMS.get((region or cuisine, taste), ())
     terms = related or _FOLLOWUP_TASTE_TERMS.get(taste, ())
-    if excluded:
+    if aliases:
+        # Search by the menu's own name for the dish ("soondubu" rather than "tofu soup").
+        followup_query = " ".join([place, *(value for value in (cuisine,) if value.casefold() not in _FLEXIBLE),
+                                   "restaurant menu", *aliases[:2]])
+        if excluded:
+            followup_query += " takeout order online"
+    elif excluded:
         followup_query = " ".join([place, *choices, "takeout menus order online"])
     elif region and not cards:
         # A narrow query can miss Chinese menus whose regional style is listed on individual dishes.

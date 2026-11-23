@@ -743,3 +743,32 @@ class DiscoverChatTests(TestCase):
             "K-Town Wilshire Blvd CA restaurant menus Korean",
             "Western Ave 6th St CA restaurant menus Korean",
         ])
+
+    def test_mild_tofu_soup_searches_by_menu_name_and_accepts_a_page_wide_mild_spice_level(self):
+        from discover_tavily import search_tavily
+
+        page = {"title": "BCD Tofu House | Menu", "url": "https://bcd.example/menu",
+                "content": "## Seafood Soondubu\nSoft tofu stew with shrimp and clams",
+                "raw_content": ("# BCD Tofu House\n3575 Wilshire Blvd, Los Angeles, CA 90010\n"
+                                "Choose your spice level: White (not spicy), Mild, Medium, Hot\n"
+                                "## Seafood Soondubu\nSoft tofu stew with shrimp and clams\n"
+                                "## Spicy Beef Soondubu\nExtra spicy broth")}
+        queries = []
+
+        def fetch(query, **_options):
+            queries.append(query)
+            return [page]
+
+        def select(preferences, city, sources):
+            return [{"source_id": sources[0]["id"], "dish_name": dish, "restaurant_name": "BCD Tofu House",
+                     "cuisine": "Korean", "location": "Koreatown", "taste_evidence": ""}
+                    for dish in ("Spicy Beef Soondubu", "Seafood Soondubu")]  # The spicy one comes first.
+
+        with patch("discover_tavily._fetch_results", side_effect=fetch):
+            cards = search_tavily({"cuisine": "Korean", "taste": "Mild", "dish": "tofu soup"}, "Los Angeles",
+                                  select_picks=select, neighborhood="Koreatown")
+        self.assertEqual([card["dish_name"] for card in cards], ["Seafood Soondubu"])  # The spicy one is skipped.
+        self.assertIn("Mild", cards[0]["why"])
+        self.assertTrue(all("Mild" not in query for query in queries))
+        self.assertEqual(queries[0], "Koreatown Los Angeles restaurant menus Korean tofu soup soondubu")
+        self.assertEqual(queries[1], "Koreatown Los Angeles Korean restaurant menu soondubu sundubu jjigae")
